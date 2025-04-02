@@ -1,0 +1,15 @@
+
+.DS_Store
+
+
+# Ignore virtual environments
+venv/
+homework4/venv/
+homework4/tb_env_312/
+tb_env_312/
+
+
+tb_env*/
+__pycache__/
+*.th
+*.pt
