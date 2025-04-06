@@ -156,7 +156,7 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
             if best_model_path and Path(best_model_path).exists():
                 Path(best_model_path).unlink()
 
-            best_model_path = save_model(model, f"best_{model_name}_ep{epoch + 1}.th")
+            best_model_path = save_model(model)
             print(f"🔥 New best model saved at epoch {epoch + 1} | Combined: {combined:.4f}")
 
         # Adjust LR based on performance plateau
