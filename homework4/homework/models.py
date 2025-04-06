@@ -81,8 +81,7 @@ class TransformerPlanner(nn.Module):
         self.input_proj = nn.Sequential(
             nn.Linear(2, d_model),
             nn.ReLU(),
-            nn.Linear(d_model, d_model),
-            nn.LayerNorm(d_model)
+            nn.Linear(d_model, d_model)
         )
 
         # Query embeddings with better initialization

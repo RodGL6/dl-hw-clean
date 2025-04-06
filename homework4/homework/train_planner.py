@@ -46,7 +46,7 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
     val_loader = load_data("drive_data/val", transform_pipeline=transform_pipeline, batch_size=batch_size, shuffle=False)
 
     model = load_model(model_name).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-5)  # e4?
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)  # e4?
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
 
     loss_fn = torch.nn.SmoothL1Loss()
