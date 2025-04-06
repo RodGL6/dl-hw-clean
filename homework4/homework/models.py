@@ -93,15 +93,14 @@ class TransformerPlanner(nn.Module):
             d_model=d_model,
             nhead=4,
             dim_feedforward=128,
-            dropout=0.1,
             batch_first=True
         )
-        self.decoder = nn.TransformerDecoder(self.decoder_layer, num_layers=2)
+        self.decoder = nn.TransformerDecoder(self.decoder_layer, num_layers=1)
 
         # Output head with lateral emphasis
         self.output_proj = nn.Sequential(
             nn.Linear(d_model, d_model // 2),
-            nn.GELU(),
+            nn.ReLU(),
             nn.Linear(d_model // 2, 2)
         )
 
