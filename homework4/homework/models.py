@@ -139,8 +139,9 @@ class TransformerPlanner(nn.Module):
             memory=memory
         )
 
-        # Direct output projection
-        return self.output_proj(decoded)
+        # Final prediction with clamping
+        waypoints = self.output_proj(decoded)
+        return torch.clamp(waypoints, -2.0, 2.0)  # Add this line
 
 
 class CNNPlanner(torch.nn.Module):

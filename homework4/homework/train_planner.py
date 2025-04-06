@@ -47,7 +47,14 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
 
     model = load_model(model_name).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)  # e4?
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode='min',
+        factor=0.5,
+        patience=3,
+        min_lr=1e-5
+    )
+
 
     loss_fn = torch.nn.SmoothL1Loss()
 
@@ -74,7 +81,7 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
 
             pred = model(**inputs)
             # loss = loss_fn(pred * waypoints_mask[..., None], waypoints * waypoints_mask[..., None])
-            loss = custom_loss(pred, waypoints, waypoints_mask, lateral_weight=1.5)
+            loss = custom_loss(pred, waypoints, waypoints_mask, lateral_weight=1.3)
 
 
             optimizer.zero_grad()
@@ -113,6 +120,9 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
                 val_metric.add(pred, waypoints, waypoints_mask)
 
         val_results = val_metric.compute()
+        scheduler.step(val_results['longitudinal_error'])
+
+
         logger.add_scalar("val/longitudinal_error", val_results["longitudinal_error"], epoch)
         logger.add_scalar("val/lateral_error", val_results["lateral_error"], epoch)
         logger.add_scalar("train/avg_loss", avg_train_loss, epoch)
