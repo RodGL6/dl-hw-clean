@@ -128,6 +128,8 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
                 val_metric.add(pred, waypoints, waypoints_mask)
 
         val_results = val_metric.compute()
+        avg_val_loss = val_loss_total / len(val_loader)
+
         logger.add_scalar("val/longitudinal_error", val_results["longitudinal_error"], epoch)
         logger.add_scalar("val/lateral_error", val_results["lateral_error"], epoch)
         logger.add_scalar("train/avg_loss", avg_train_loss, epoch)
