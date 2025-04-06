@@ -55,10 +55,12 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
     loss_fn = torch.nn.SmoothL1Loss()
 
 
-    best_val_loss = float('inf')
-    best_long_err = float('inf')
-    best_lat_err = float('inf')
-    best_model_path = None
+    best_metrics = {
+        'longitudinal': float('inf'),
+        'lateral': float('inf'),
+        'combined': float('inf')
+    }
+    best_model_path = ""
 
     global_step = 0
 
@@ -128,30 +130,41 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
                 val_metric.add(pred, waypoints, waypoints_mask)
 
         val_results = val_metric.compute()
-        avg_val_loss = val_loss_total / len(val_loader)
+        longitudinal_error = val_results["longitudinal_error"]
+        lateral_error = val_results["lateral_error"]
+        combined = combined_weights[0] * longitudinal_error + combined_weights[1] * lateral_error
 
-        logger.add_scalar("val/longitudinal_error", val_results["longitudinal_error"], epoch)
-        logger.add_scalar("val/lateral_error", val_results["lateral_error"], epoch)
+        logger.add_scalar("val/longitudinal_error", longitudinal_error, epoch)
+        logger.add_scalar("val/lateral_error", lateral_error, epoch)
         logger.add_scalar("train/avg_loss", avg_train_loss, epoch)
+        logger.add_scalar("val/combined_score", combined, epoch)
 
-        print(f"Epoch {epoch + 1}/{num_epochs} | Train Loss: {avg_train_loss:.4f} | "
-              f"Val Lateral: {val_results['lateral_error']:.4f} | "
-              f"Val Longitudinal: {val_results['longitudinal_error']:.4f}")
+        print(f"Epoch {epoch + 1}/{num_epochs} | "
+              f"Train Loss: {avg_train_loss:.4f} | "
+              f"Val Longitudinal: {longitudinal_error:.4f} | "
+              f"Val Lateral: {lateral_error:.4f}")
 
+        # Save if all metrics improve or combined is best
+        if combined < best_metrics['combined']:
+            best_metrics.update({
+                'longitudinal': longitudinal_error,
+                'lateral': lateral_error,
+                'combined': combined
+            })
 
-        # Early stopping logic: save only if both key metrics improve
-        if (val_results["lateral_error"] < best_lat_err and
-                val_results["longitudinal_error"] < best_long_err):
-            best_lat_err = val_results["lateral_error"]
-            best_long_err = val_results["longitudinal_error"]
-            best_val_loss = avg_val_loss
-            best_model_path = save_model(model)
-            print(f"💾 Saved improved model to {best_model_path}")
+            if best_model_path and Path(best_model_path).exists():
+                Path(best_model_path).unlink()
 
+            best_model_path = save_model(model, f"best_{model_name}_ep{epoch + 1}.th")
+            print(f"🔥 New best model saved at epoch {epoch + 1} | Combined: {combined:.4f}")
 
-    scheduler.step()
-    save_path = save_model(model)
-    print(f"✅ Model saved to {save_path}")
+        # Adjust LR based on performance plateau
+        scheduler.step(combined)
+
+    print(f"\n🏁 Training finished. Best model: {best_model_path}")
+    print(f"📊 Final Best - Longitudinal: {best_metrics['longitudinal']:.4f}, "
+          f"Lateral: {best_metrics['lateral']:.4f}, Combined: {best_metrics['combined']:.4f}")
+    return best_model_path
 
 
 if __name__ == "__main__":

@@ -70,7 +70,7 @@ class TransformerPlanner(nn.Module):
         self,
         n_track: int = 10,
         n_waypoints: int = 3,
-        d_model: int = 128,  # or 64?
+        d_model: int = 64,  # or 64?
     ):
         super().__init__()
 
@@ -88,11 +88,9 @@ class TransformerPlanner(nn.Module):
             d_model=d_model,
             nhead=4,
             dim_feedforward=128,
-            dropout=0.1,
-            batch_first=True,
-            norm_first=True  # Simpler batch handling
+            batch_first=True  # Simpler batch handling
         )
-        self.decoder = nn.TransformerDecoder(self.decoder_layer, num_layers=2)
+        self.decoder = nn.TransformerDecoder(self.decoder_layer, num_layers=3)
 
         # 4. Output projection
         self.output_proj = nn.Linear(d_model, 2)
