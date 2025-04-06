@@ -52,7 +52,8 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
         mode='min',
         factor=0.5,
         patience=3,
-        min_lr=1e-5
+        min_lr=1e-5,
+        verbose=True  # Print messages when LR changes
     )
 
 
