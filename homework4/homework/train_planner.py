@@ -3,6 +3,9 @@ import torch
 import numpy as np
 from pathlib import Path
 from datetime import datetime
+
+from math import inf
+
 # from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from homework.models import load_model, save_model
@@ -51,7 +54,14 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
 
     loss_fn = torch.nn.SmoothL1Loss()
 
+
+    best_val_loss = float('inf')
+    best_long_err = float('inf')
+    best_lat_err = float('inf')
+    best_model_path = None
+
     global_step = 0
+
     for epoch in range(num_epochs):
         model.train()
         train_loss = 0.0
@@ -92,6 +102,7 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
         # Validation
         val_metric = PlannerMetric()
         model.eval()
+        val_loss_total = 0.0
         with torch.no_grad():
             for batch in val_loader:
                 inputs = {}
@@ -107,6 +118,10 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
                 pred = model(**inputs)
 
                 val_loss = loss_fn(pred * waypoints_mask[..., None], waypoints * waypoints_mask[..., None])
+
+                val_loss_total += val_loss.item()
+                val_metric.add(pred, waypoints, waypoints_mask)
+
                 # log to visualize in TensorBoard
                 logger.add_scalar("val/loss", val_loss.item(), epoch)
 
@@ -120,6 +135,17 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
         print(f"Epoch {epoch + 1}/{num_epochs} | Train Loss: {avg_train_loss:.4f} | "
               f"Val Lateral: {val_results['lateral_error']:.4f} | "
               f"Val Longitudinal: {val_results['longitudinal_error']:.4f}")
+
+
+        # Early stopping logic: save only if both key metrics improve
+        if (val_results["lateral_error"] < best_lat_err and
+                val_results["longitudinal_error"] < best_long_err):
+            best_lat_err = val_results["lateral_error"]
+            best_long_err = val_results["longitudinal_error"]
+            best_val_loss = avg_val_loss
+            best_model_path = save_model(model)
+            print(f"💾 Saved improved model to {best_model_path}")
+
 
     scheduler.step()
     save_path = save_model(model)
