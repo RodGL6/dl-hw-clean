@@ -70,32 +70,39 @@ class TransformerPlanner(nn.Module):
         self,
         n_track: int = 10,
         n_waypoints: int = 3,
-        d_model: int = 128,  # or 64?
+        d_model: int = 64,  # or 64?
     ):
         super().__init__()
 
         self.n_track = n_track
         self.n_waypoints = n_waypoints
 
-        # 1. Input projection
-        self.input_proj = nn.Linear(2, d_model)
+        # Enhanced input projection
+        self.input_proj = nn.Sequential(
+            nn.Linear(2, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, d_model)
+        )
 
-        # 2. Query embeddings (simpler than before)
+        # Query embeddings with better initialization
         self.query_embed = nn.Embedding(n_waypoints, d_model)
+        nn.init.normal_(self.query_embed.weight, mean=0.0, std=0.02)
 
-        # 3. Single transformer decoder layer
+        # Single transformer layer with lateral focus
         self.decoder_layer = nn.TransformerDecoderLayer(
             d_model=d_model,
             nhead=4,
             dim_feedforward=128,
-            dropout=0.1,
-            batch_first=True,
-            norm_first=True  # Simpler batch handling
+            batch_first=True
         )
-        self.decoder = nn.TransformerDecoder(self.decoder_layer, num_layers=2)
+        self.decoder = nn.TransformerDecoder(self.decoder_layer, num_layers=1)
 
-        # 4. Output projection
-        self.output_proj = nn.Linear(d_model, 2)
+        # Output head with lateral emphasis
+        self.output_proj = nn.Sequential(
+            nn.Linear(d_model, d_model // 2),
+            nn.ReLU(),
+            nn.Linear(d_model // 2, 2)
+        )
 
     def forward(
         self,

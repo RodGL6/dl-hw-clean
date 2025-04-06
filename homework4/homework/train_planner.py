@@ -16,6 +16,17 @@ Usage:
 # print("Time to train")
 
 
+def custom_loss(pred, target, mask, lateral_weight=1.5):
+    """Custom loss with extra penalty for lateral errors"""
+    base_loss = torch.nn.functional.smooth_l1_loss(
+        pred * mask[..., None],
+        target * mask[..., None]
+    )
+    lateral_diff = torch.abs(pred[..., 1] - target[..., 1]) * mask
+    lateral_loss = lateral_diff.mean()
+    return base_loss + lateral_weight * lateral_loss
+
+
 def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp_dir="logs"):
     # Universal device selection (CUDA, MPS, or CPU)
     if torch.cuda.is_available():
@@ -35,7 +46,7 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
     val_loader = load_data("drive_data/val", transform_pipeline=transform_pipeline, batch_size=batch_size, shuffle=False)
 
     model = load_model(model_name).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-5)  # e4?
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
 
     loss_fn = torch.nn.SmoothL1Loss()
@@ -62,7 +73,9 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
                 inputs["image"] = image.to(device)
 
             pred = model(**inputs)
-            loss = loss_fn(pred * waypoints_mask[..., None], waypoints * waypoints_mask[..., None])
+            # loss = loss_fn(pred * waypoints_mask[..., None], waypoints * waypoints_mask[..., None])
+            loss = custom_loss(pred, waypoints, waypoints_mask, lateral_weight=1.5)
+
 
             optimizer.zero_grad()
             loss.backward()
