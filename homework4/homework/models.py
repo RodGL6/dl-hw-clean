@@ -77,34 +77,25 @@ class TransformerPlanner(nn.Module):
         self.n_track = n_track
         self.n_waypoints = n_waypoints
 
-        # Enhanced input projection
-        self.input_proj = nn.Sequential(
-            nn.Linear(2, d_model),
-            nn.LayerNorm(d_model),
-            nn.ReLU(),
-            nn.Linear(d_model, d_model)
-        )
+        # 1. Input projection
+        self.input_proj = nn.Linear(2, d_model)
 
-        # Query embeddings with better initialization
+        # 2. Query embeddings (simpler than before)
         self.query_embed = nn.Embedding(n_waypoints, d_model)
-        nn.init.normal_(self.query_embed.weight, mean=0.0, std=0.02)
 
-        # Simplified but effective transformer
+        # 3. Single transformer decoder layer
         self.decoder_layer = nn.TransformerDecoderLayer(
             d_model=d_model,
-            nhead=8,
-            dim_feedforward=256,
+            nhead=4,
+            dim_feedforward=128,
             dropout=0.1,
-            batch_first=True
+            batch_first=True,
+            norm_first=True  # Simpler batch handling
         )
         self.decoder = nn.TransformerDecoder(self.decoder_layer, num_layers=2)
 
-        # Output head with lateral error focus
-        self.output_proj = nn.Sequential(
-            nn.Linear(d_model, d_model // 2),
-            nn.ReLU(),
-            nn.Linear(d_model // 2, 2)
-        )
+        # 4. Output projection
+        self.output_proj = nn.Linear(d_model, 2)
 
     def forward(
         self,
@@ -128,17 +119,20 @@ class TransformerPlanner(nn.Module):
         # B: batch size
         B = track_left.size(0)
 
-        # Combine and enhance track features
-        track = torch.cat([track_left, track_right], dim=1)
-        memory = self.input_proj(track)
+        # Combine and project tracks
+        track = torch.cat([track_left, track_right], dim=1)  # [B, 2*n_track, 2]
+        memory = self.input_proj(track)  # [B, 2*n_track, d_model]
 
         # Get queries
-        queries = self.query_embed.weight.unsqueeze(0).expand(B, -1, -1)
+        queries = self.query_embed.weight.unsqueeze(0).expand(B, -1, -1)  # [B, n_waypoints, d_model]
 
-        # Transformer processing
-        decoded = self.decoder(queries, memory)
+        # Simple transformer processing
+        decoded = self.decoder(
+            tgt=queries,
+            memory=memory
+        )
 
-        # Final prediction
+        # Direct output projection
         return self.output_proj(decoded)
 
 
