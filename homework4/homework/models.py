@@ -80,51 +80,35 @@ class TransformerPlanner(nn.Module):
         self.n_track = n_track
         self.n_waypoints = n_waypoints
 
-        # Enhanced input processing
-        self.track_encoder = nn.Sequential(
-            nn.Linear(2, d_model // 2),
-            nn.ReLU(),
-            nn.Linear(d_model // 2, d_model),
-            nn.LayerNorm(d_model)
-        )
+        self.d_model = d_model
 
-        # More sophisticated query embeddings
-        self.query_embed = nn.Parameter(torch.randn(n_waypoints, d_model))
-        nn.init.normal_(self.query_embed, mean=0.0, std=0.02)
+        # Learnable query embeddings (each waypoint gets its own query)
+        self.query_embed = nn.Embedding(n_waypoints, d_model)
 
-        # Positional encoding with relative distances
+        # Positional embedding (optional but can help for sequence structure)
         self.pos_embed = nn.Parameter(torch.randn(1, 2 * n_track, d_model))
 
-        # Deeper transformer with improved configuration
+        # Project 2D input coordinates into transformer dimension
+        self.input_proj = nn.Linear(2, d_model)
+
+        # Transformer Decoder layer
         decoder_layer = nn.TransformerDecoderLayer(
             d_model=d_model,
             nhead=nhead,
-            dim_feedforward=4 * d_model,  # Wider FFN
+            dim_feedforward=4 * d_model,  # FFN size
             dropout=dropout,
-            activation='gelu',  # Smoother than ReLU
             batch_first=True,
             norm_first=True
         )
         self.decoder = nn.TransformerDecoder(
             decoder_layer,
             num_layers=num_layers,
-            norm=nn.LayerNorm(d_model))
-
-        # Output head with stability improvements
-        self.output_head = nn.Sequential(
-            nn.Linear(d_model, d_model),
-            nn.GELU(),
-            nn.Linear(d_model, 2),
-            nn.Tanh()  # Constrain outputs to reasonable range
+            norm=nn.LayerNorm(d_model)
         )
 
-        # Initialize weights properly
-        self._init_weights()
+        # Final projection: d_model → 2D (x, y)
+        self.output_proj = nn.Linear(d_model, 2)
 
-    def _init_weights(self):
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
 
     def forward(
         self,
@@ -148,27 +132,20 @@ class TransformerPlanner(nn.Module):
         # B: batch size
         B = track_left.size(0)
 
-        # 1. Process track boundaries
-        track = torch.cat([track_left, track_right], dim=1)  # [B, 2*n_track, 2]
-        memory = self.track_encoder(track) + self.pos_embed  # [B, 2*n_track, d_model]
+        # (B, 2 * n_track, 2)
+        track = torch.cat([track_left, track_right], dim=1)
 
-        # 2. Prepare queries (waypoints)
-        queries = self.query_embed.unsqueeze(0).expand(B, -1, -1)  # [B, n_waypoints, d_model]
+        # Project to d_model and add positional encoding
+        memory = self.input_proj(track) + self.pos_embed[:, :track.shape[1]]
 
-        # 3. Transformer processing
-        decoded = self.decoder(
-            tgt=queries,
-            memory=memory,
-            tgt_mask=self._generate_square_subsequent_mask(self.n_waypoints).to(queries.device)
-        )
+        # Queries: (B, n_waypoints, d_model)
+        queries = self.query_embed.weight.unsqueeze(0).expand(B, -1, -1)
 
-        # 4. Output prediction with stability
-        waypoints = 2.0 * self.output_head(decoded)  # Scale tanh to [-2,2] range
-        return waypoints
+        # Transformer decoding
+        decoded = self.decoder(tgt=queries, memory=memory)
 
-    def _generate_square_subsequent_mask(self, sz):
-        """Prevent waypoints from attending to future waypoints"""
-        return torch.triu(torch.full((sz, sz), float('-inf')), diagonal=1)
+        # Final (x, y) waypoint predictions
+        return self.output_proj(decoded)
 
 
 class CNNPlanner(torch.nn.Module):
