@@ -30,7 +30,8 @@ def custom_loss(pred, target, mask, lateral_weight=1.5):
     return base_loss + lateral_weight * lateral_loss
 
 
-def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp_dir="logs"):
+def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp_dir="logs",  combined_weights=(0.7, 0.3),  # (longitudinal_weight, lateral_weight)
+):
     # Universal device selection (CUDA, MPS, or CPU)
     if torch.cuda.is_available():
         device = torch.device("cuda")  # For NVIDIA GPUs
