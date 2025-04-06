@@ -77,6 +77,21 @@ class TransformerPlanner(nn.Module):
 
         self.query_embed = nn.Embedding(n_waypoints, d_model)
 
+        # Project 2D input points (x, y) → d_model
+        self.input_proj = nn.Linear(2, d_model)
+
+        # Transformer decoder: cross-attention layers
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model=d_model,
+            nhead=4,
+            dim_feedforward=128,
+            batch_first=False  # PyTorch defaults to (seq, batch, dim)
+        )
+        self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=2)
+
+        # Final projection to 2D coordinates
+        self.output_proj = nn.Linear(d_model, 2)
+
     def forward(
         self,
         track_left: torch.Tensor,
@@ -96,7 +111,24 @@ class TransformerPlanner(nn.Module):
         Returns:
             torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
         """
-        raise NotImplementedError
+        b = track_left.shape[0]
+
+        # Combine lane boundaries: (b, 2 * n_track, 2)
+        lane_inputs = torch.cat([track_left, track_right], dim=1)
+
+        # Project lane boundary points to d_model space
+        memory = self.input_proj(lane_inputs)  # (b, 2 * n_track, d_model)
+        memory = memory.permute(1, 0, 2)  # (seq_len, b, d_model)
+
+        # Get learned waypoint queries
+        queries = self.query_embed.weight.unsqueeze(1).repeat(1, b, 1)  # (n_waypoints, b, d_model)
+
+        # Cross-attention: queries attend to boundary memory
+        decoded = self.decoder(tgt=queries, memory=memory)  # (n_waypoints, b, d_model)
+        decoded = decoded.permute(1, 0, 2)  # (b, n_waypoints, d_model)
+
+        # Project to 2D waypoints
+        return self.output_proj(decoded)  # (b, n_waypoints, 2)
 
 
 class CNNPlanner(torch.nn.Module):

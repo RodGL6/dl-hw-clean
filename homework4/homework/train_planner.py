@@ -3,7 +3,7 @@ import torch
 import numpy as np
 from pathlib import Path
 from datetime import datetime
-from tqdm import tqdm
+# from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from homework.models import load_model, save_model
 from homework.datasets.road_dataset import load_data
@@ -16,7 +16,7 @@ Usage:
 # print("Time to train")
 
 
-def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=1e-3, exp_dir="logs"):
+def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp_dir="logs"):
     # Universal device selection (CUDA, MPS, or CPU)
     if torch.cuda.is_available():
         device = torch.device("cuda")  # For NVIDIA GPUs
@@ -46,7 +46,7 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=1e-3, exp_d
         train_loss = 0.0
         train_metric = PlannerMetric()
 
-        for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{num_epochs}"):
+        for batch in train_loader:
             track_left = batch.get("track_left", None)
             track_right = batch.get("track_right", None)
             image = batch.get("image", None)
@@ -80,7 +80,7 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=1e-3, exp_d
         val_metric = PlannerMetric()
         model.eval()
         with torch.no_grad():
-            for batch in tqdm(val_loader, desc="Validating"):
+            for batch in val_loader:
                 inputs = {}
                 if "track_left" in batch:
                     inputs["track_left"] = batch["track_left"].to(device)
