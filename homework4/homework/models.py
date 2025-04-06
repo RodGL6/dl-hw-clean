@@ -68,7 +68,7 @@ class TransformerPlanner(nn.Module):
         self,
         n_track: int = 10,
         n_waypoints: int = 3,
-        d_model: int = 128,
+        d_model: int = 96,  # or 64?
     ):
         super().__init__()
 
@@ -80,21 +80,36 @@ class TransformerPlanner(nn.Module):
         self.query_embed = nn.Embedding(n_waypoints, d_model)
 
         # Project 2D input points (x, y) → d_model
-        self.input_proj = nn.Linear(2, d_model)
+        self.input_proj = nn.Sequential(
+            nn.Linear(2, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, d_model)
+        )
+
+        # Learnable positional encoding for lane boundary points
+        self.pos_encoding = nn.Parameter(torch.randn(1, 2 * n_track, d_model))
 
         # Transformer decoder: cross-attention layers
         decoder_layer = nn.TransformerDecoderLayer(
             d_model=d_model,
             nhead=8,
             dim_feedforward=256,
-            dropout=0.1,
-            norm_first=True,
+            dropout=0.2,
+            norm_first=True,  # necessary?
             batch_first=True  # allows input shape (B, T, D)
         )
         self.decoder = nn.TransformerDecoder(
             decoder_layer=decoder_layer,
-            num_layers=4,
+            num_layers=6,
             norm=nn.LayerNorm(d_model)
+        )
+
+        # MLP refinement before final output
+        self.mlp = nn.Sequential(
+            nn.LayerNorm(d_model),
+            nn.Linear(d_model, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, d_model)
         )
 
         # Final projection to 2D coordinates
@@ -120,22 +135,29 @@ class TransformerPlanner(nn.Module):
             torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
         """
         # B: batch size
-        batch_size = track_left.size(0)
+        B = track_left.shape[0]
 
-        # Combine left and right boundaries into one sequence
-        track = torch.cat([track_left, track_right], dim=1)  # (B, 2 * n_track, 2)
+        # Optional input normalization (center each track)
+        track_left = track_left - track_left.mean(dim=1, keepdim=True)
+        track_right = track_right - track_right.mean(dim=1, keepdim=True)
 
-        # Project 2D input coordinates to d_model dimension
-        memory = self.input_proj(track)  # (B, 2 * n_track, d_model)
+        # Concatenate left + right: (B, 2*n_track, 2)
+        track = torch.cat([track_left, track_right], dim=1)
 
-        # Generate learned queries for each waypoint
-        queries = self.query_embed.weight.unsqueeze(0).repeat(batch_size, 1, 1)  # (B, n_waypoints, d_model)
+        # Project 2D -> d_model and add positional encoding
+        memory = self.input_proj(track) + self.pos_encoding  # (B, 2*n_track, d_model)
 
-        # Decode using cross-attention
+        # Repeat learned waypoint queries across batch
+        queries = self.query_embed.weight.unsqueeze(0).repeat(B, 1, 1)  # (B, n_waypoints, d_model)
+
+        # Decode waypoints using cross + self attention
         decoded = self.decoder(tgt=queries, memory=memory)  # (B, n_waypoints, d_model)
 
-        # Project to 2D waypoints
-        return self.output_proj(decoded)  # (B, n_waypoints, 2)
+        # Refine with MLP
+        refined = self.mlp(decoded)
+
+        # Final projection to 2D coords
+        return self.output_proj(refined)  # (B, n_waypoints, 2)
 
 
 class CNNPlanner(torch.nn.Module):
