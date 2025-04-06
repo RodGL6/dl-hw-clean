@@ -119,6 +119,21 @@ def create_pose_matrix(
     return pose_matrix
 
 
+class LateralShift:
+    """Add random lateral shifts to teach robustness"""
+
+    def __init__(self, max_shift=0.2):
+        self.max_shift = max_shift
+
+    def __call__(self, sample):
+        if np.random.rand() < 0.5:  # 50% chance to apply
+            shift = np.random.uniform(-self.max_shift, self.max_shift)
+            sample['track_left'][:, 1] += shift
+            sample['track_right'][:, 1] += shift
+            sample['waypoints'][:, 1] += shift
+        return sample
+
+
 class Compose(tv_transforms.Compose):
     def __call__(self, sample: dict):
         for t in self.transforms:

@@ -8,6 +8,24 @@ from .road_utils import Track
 from .road_transforms import RandomHorizontalFlip
 
 
+class LateralShift:
+    """Add random lateral shifts to teach robustness"""
+
+    def __init__(self, max_shift=0.2):
+        self.max_shift = max_shift
+
+    def __call__(self, sample):
+        if np.random.rand() < 0.5:  # 50% chance to apply
+            shift = np.random.uniform(-self.max_shift, self.max_shift)
+            if 'track_left' in sample:
+                sample['track_left'][:, 1] += shift
+            if 'track_right' in sample:
+                sample['track_right'][:, 1] += shift
+            if 'waypoints' in sample:
+                sample['waypoints'][:, 1] += shift
+        return sample
+
+
 class RoadDataset(Dataset):
     """
     SuperTux dataset for road detection
@@ -54,6 +72,8 @@ class RoadDataset(Dataset):
             xform = road_transforms.Compose([
                 road_transforms.ImageLoader(str(self.episode_path)),
                 road_transforms.EgoTrackProcessor(self.track),
+                LateralShift(),  # Add this after EgoTrackProcessor
+
                 tv_transforms.RandomApply([
                     tv_transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
                     tv_transforms.RandomGrayscale(p=0.1),
