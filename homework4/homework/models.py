@@ -70,45 +70,30 @@ class TransformerPlanner(nn.Module):
         self,
         n_track: int = 10,
         n_waypoints: int = 3,
-        d_model: int = 128,  # or 64?
-        nhead: int = 8,  # Increased attention heads
-        num_layers: int = 3,
-        dropout: float = 0.1
+        d_model: int = 64,  # or 64?
     ):
         super().__init__()
 
         self.n_track = n_track
         self.n_waypoints = n_waypoints
 
-        self.d_model = d_model
-
-        # Learnable query embeddings (each waypoint gets its own query)
-        self.query_embed = nn.Embedding(n_waypoints, d_model)
-
-        # Positional embedding (optional but can help for sequence structure)
-        self.pos_embed = nn.Parameter(torch.randn(1, 2 * n_track, d_model))
-
-        # Project 2D input coordinates into transformer dimension
+        # 1. Input projection
         self.input_proj = nn.Linear(2, d_model)
 
-        # Transformer Decoder layer
-        decoder_layer = nn.TransformerDecoderLayer(
+        # 2. Query embeddings (simpler than before)
+        self.query_embed = nn.Embedding(n_waypoints, d_model)
+
+        # 3. Single transformer decoder layer
+        self.decoder_layer = nn.TransformerDecoderLayer(
             d_model=d_model,
-            nhead=nhead,
-            dim_feedforward=4 * d_model,  # FFN size
-            dropout=dropout,
-            batch_first=True,
-            norm_first=True
+            nhead=4,
+            dim_feedforward=128,
+            batch_first=True  # Simpler batch handling
         )
-        self.decoder = nn.TransformerDecoder(
-            decoder_layer,
-            num_layers=num_layers,
-            norm=nn.LayerNorm(d_model)
-        )
+        self.decoder = nn.TransformerDecoder(self.decoder_layer, num_layers=1)
 
-        # Final projection: d_model → 2D (x, y)
+        # 4. Output projection
         self.output_proj = nn.Linear(d_model, 2)
-
 
     def forward(
         self,
@@ -132,19 +117,20 @@ class TransformerPlanner(nn.Module):
         # B: batch size
         B = track_left.size(0)
 
-        # (B, 2 * n_track, 2)
-        track = torch.cat([track_left, track_right], dim=1)
+        # Combine and project tracks
+        track = torch.cat([track_left, track_right], dim=1)  # [B, 2*n_track, 2]
+        memory = self.input_proj(track)  # [B, 2*n_track, d_model]
 
-        # Project to d_model and add positional encoding
-        memory = self.input_proj(track) + self.pos_embed[:, :track.shape[1]]
+        # Get queries
+        queries = self.query_embed.weight.unsqueeze(0).expand(B, -1, -1)  # [B, n_waypoints, d_model]
 
-        # Queries: (B, n_waypoints, d_model)
-        queries = self.query_embed.weight.unsqueeze(0).expand(B, -1, -1)
+        # Simple transformer processing
+        decoded = self.decoder(
+            tgt=queries,
+            memory=memory
+        )
 
-        # Transformer decoding
-        decoded = self.decoder(tgt=queries, memory=memory)
-
-        # Final (x, y) waypoint predictions
+        # Direct output projection
         return self.output_proj(decoded)
 
 
