@@ -70,7 +70,7 @@ class TransformerPlanner(nn.Module):
         self,
         n_track: int = 10,
         n_waypoints: int = 3,
-        d_model: int = 64,  # or 64?
+        d_model: int = 96,  # or 64?
     ):
         super().__init__()
 
@@ -93,14 +93,15 @@ class TransformerPlanner(nn.Module):
             d_model=d_model,
             nhead=4,
             dim_feedforward=128,
+            dropout=0.1,
             batch_first=True
         )
-        self.decoder = nn.TransformerDecoder(self.decoder_layer, num_layers=1)
+        self.decoder = nn.TransformerDecoder(self.decoder_layer, num_layers=2)
 
         # Output head with lateral emphasis
         self.output_proj = nn.Sequential(
             nn.Linear(d_model, d_model // 2),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Linear(d_model // 2, 2)
         )
 
