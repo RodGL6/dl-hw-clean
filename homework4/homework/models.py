@@ -70,7 +70,7 @@ class TransformerPlanner(nn.Module):
         self,
         n_track: int = 10,
         n_waypoints: int = 3,
-        d_model: int = 96,  # or 64?
+        d_model: int = 64,  # or 64?
     ):
         super().__init__()
 
@@ -81,7 +81,8 @@ class TransformerPlanner(nn.Module):
         self.input_proj = nn.Sequential(
             nn.Linear(2, d_model),
             nn.ReLU(),
-            nn.Linear(d_model, d_model)
+            nn.Linear(d_model, d_model),
+            nn.LayerNorm(d_model)
         )
 
         # Query embeddings with better initialization

@@ -74,7 +74,7 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
 
             pred = model(**inputs)
             # loss = loss_fn(pred * waypoints_mask[..., None], waypoints * waypoints_mask[..., None])
-            loss = custom_loss(pred, waypoints, waypoints_mask, lateral_weight=1.8)
+            loss = custom_loss(pred, waypoints, waypoints_mask, lateral_weight=1.5)
 
 
             optimizer.zero_grad()
