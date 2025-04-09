@@ -3,7 +3,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision.models as models
+# import torchvision.models as models
 
 
 # Code developed with student effort and
@@ -139,6 +139,28 @@ class TransformerPlanner(nn.Module):
 
 
 class CNNPlanner(torch.nn.Module):
+    class Block(nn.Module):
+        def __init__(self, in_channels, out_channels, stride):
+            super().__init__()
+            kernel_size = 3
+            padding = (kernel_size - 1) // 2
+
+            self.c1 = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
+            self.n1 = nn.GroupNorm(1, out_channels)
+            self.c2 = nn.Conv2d(out_channels, out_channels, kernel_size, 1, padding)
+            self.n2 = nn.GroupNorm(1, out_channels)
+            self.relu = nn.ReLU()
+
+            self.skip = (
+                nn.Conv2d(in_channels, out_channels, 1, stride, 0)
+                if in_channels != out_channels else nn.Identity()
+            )
+
+        def forward(self, x0):
+            x = self.relu(self.n1(self.c1(x0)))
+            x = self.relu(self.n2(self.c2(x)))
+            return self.skip(x0) + x
+
     def __init__(
         self,
         n_waypoints: int = 3,
@@ -150,32 +172,26 @@ class CNNPlanner(torch.nn.Module):
         self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN), persistent=False)
         self.register_buffer("input_std", torch.as_tensor(INPUT_STD), persistent=False)
 
+        # Define channels_l0 here explicitly
+        channels_l0 = 64  # or 32
 
-
-        # Start from a resnet18, then remove some layers to reduce size
-        base = models.resnet18(weights=None)
-
-        # Remove deeper layers to reduce size
-        self.encoder = nn.Sequential(
-            base.conv1,
-            base.bn1,
-            base.relu,
-            base.maxpool,
-            base.layer1,
-            base.layer2,
-            base.layer3,  # Drop layer4 to reduce size
-            nn.AdaptiveAvgPool2d((1, 1)),
-            nn.Flatten()
+        self.backbone = nn.Sequential(
+            nn.Conv2d(3, channels_l0, kernel_size=11, stride=2, padding=5),
+            nn.ReLU(),
+            nn.Conv2d(channels_l0, channels_l0 * 2, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(channels_l0 * 2, channels_l0 * 4, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d(1),  # Global average pooling
         )
 
-        # Calculate output channels after layer3 (it's 256)
         self.head = nn.Sequential(
-            nn.Linear(256, 128),
+            nn.Flatten(),
+            nn.Linear(channels_l0 * 4, 128),
             nn.ReLU(),
             nn.Dropout(0.3),
             nn.Linear(128, n_waypoints * 2)
         )
-
 
     def forward(self, image: torch.Tensor, **kwargs) -> torch.Tensor:
         """
@@ -188,10 +204,10 @@ class CNNPlanner(torch.nn.Module):
         x = image
         x = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
 
-        x = self.encoder(x)
-        x = self.head(x)
+        features = self.backbone(x)
+        waypoints = self.head(features)
 
-        return x.view(-1, self.n_waypoints, 2)  # shape: (B, n_waypoints, 2)
+        return waypoints.view(-1, self.n_waypoints, 2)
 
 
 MODEL_FACTORY = {
