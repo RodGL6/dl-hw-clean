@@ -6,6 +6,9 @@ from datetime import datetime
 
 from math import inf
 
+# Code developed with student effort and
+# assistance from generative AI tools (e.g., ChatGPT), per course guidelines.
+
 # from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from homework.models import load_model, save_model
