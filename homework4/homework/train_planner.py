@@ -11,6 +11,8 @@ from torch.utils.tensorboard import SummaryWriter
 from homework.models import load_model, save_model
 from homework.datasets.road_dataset import load_data
 from homework.metrics import PlannerMetric
+from homework.models import CNNPlanner  # so isinstance() works
+
 
 """
 Usage:
@@ -45,7 +47,13 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
     log_dir = Path(exp_dir) / f"{model_name}_{datetime.now().strftime('%m%d_%H%M%S')}"
     logger = SummaryWriter(str(log_dir))
 
-    transform_pipeline = "state_only" if "planner" in model_name else "default"
+    if model_name == "cnn_planner":
+        transform_pipeline = "default"  # this loads image + waypoints
+    elif "planner" in model_name:
+        transform_pipeline = "state_only"
+    else:
+        transform_pipeline = "default"
+
     train_loader = load_data("drive_data/train", transform_pipeline=transform_pipeline, batch_size=batch_size, shuffle=True)
     val_loader = load_data("drive_data/val", transform_pipeline=transform_pipeline, batch_size=batch_size, shuffle=False)
 
@@ -85,7 +93,14 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
             if image is not None:
                 inputs["image"] = image.to(device)
 
-            pred = model(**inputs)
+            # Dynamically decide what inputs to pass based on model type
+            if isinstance(model, CNNPlanner):
+                if "image" not in inputs:
+                    raise ValueError("CNNPlanner requires 'image' in inputs but it was missing.")
+                pred = model(image=inputs["image"])
+            else:
+                pred = model(**inputs)
+
             # loss = loss_fn(pred * waypoints_mask[..., None], waypoints * waypoints_mask[..., None])
             loss = custom_loss(pred, waypoints, waypoints_mask, lateral_weight=1.5)
 
@@ -118,7 +133,14 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
 
                 waypoints = batch["waypoints"].to(device)
                 waypoints_mask = batch["waypoints_mask"].to(device)
-                pred = model(**inputs)
+
+                # Dynamically decide what inputs to pass based on model type
+                if isinstance(model, CNNPlanner):
+                    if "image" not in inputs:
+                        raise ValueError("CNNPlanner requires 'image' in inputs but it was missing.")
+                    pred = model(image=inputs["image"])
+                else:
+                    pred = model(**inputs)
 
                 val_loss = loss_fn(pred * waypoints_mask[..., None], waypoints * waypoints_mask[..., None])
 
@@ -160,7 +182,7 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
             print(f"🔥 New best model saved at epoch {epoch + 1} | Combined: {combined:.4f}")
 
         # Adjust LR based on performance plateau
-        scheduler.step(combined)
+        scheduler.step() #combined
 
     print(f"\n🏁 Training finished. Best model: {best_model_path}")
     print(f"📊 Final Best - Longitudinal: {best_metrics['longitudinal']:.4f}, "
