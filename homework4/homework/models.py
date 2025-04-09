@@ -74,7 +74,7 @@ class TransformerPlanner(nn.Module):
         self,
         n_track: int = 10,
         n_waypoints: int = 3,
-        d_model: int = 128,  # or 64?
+        d_model: int = 160,  # or 64?
     ):
         super().__init__()
 
@@ -94,7 +94,7 @@ class TransformerPlanner(nn.Module):
             dim_feedforward=128,
             batch_first=True  # Simpler batch handling
         )
-        self.decoder = nn.TransformerDecoder(self.decoder_layer, num_layers=3)
+        self.decoder = nn.TransformerDecoder(self.decoder_layer, num_layers=2)
 
         # 4. Output projection
         self.output_proj = nn.Linear(d_model, 2)
@@ -172,22 +172,21 @@ class CNNPlanner(torch.nn.Module):
         self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN), persistent=False)
         self.register_buffer("input_std", torch.as_tensor(INPUT_STD), persistent=False)
 
-        # Define channels_l0 here explicitly
-        channels_l0 = 64  # or 32
-
-        self.backbone = nn.Sequential(
+        cnn_layers = [
             nn.Conv2d(3, channels_l0, kernel_size=11, stride=2, padding=5),
             nn.ReLU(),
-            nn.Conv2d(channels_l0, channels_l0 * 2, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(channels_l0 * 2, channels_l0 * 4, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(),
-            nn.AdaptiveAvgPool2d(1),  # Global average pooling
-        )
+        ]
 
+        c1 = channels_l0
+        for _ in range(n_blocks):
+            c2 = c1 * 2
+            cnn_layers.append(self.Block(c1, c2, stride=2))
+            c1 = c2
+
+        self.feature_extractor = nn.Sequential(*cnn_layers)
+        self.dropout = nn.Dropout(0.3)
         self.head = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(channels_l0 * 4, 128),
+            nn.Linear(c1, 128),
             nn.ReLU(),
             nn.Dropout(0.3),
             nn.Linear(128, n_waypoints * 2)
@@ -204,10 +203,14 @@ class CNNPlanner(torch.nn.Module):
         x = image
         x = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
 
-        features = self.backbone(x)
-        waypoints = self.head(features)
+        # CNN feature extraction
+        x = self.feature_extractor(x)  # (B, C, H', W')
+        x = x.mean(dim=[2, 3])  # Global average pool → (B, C)
 
-        return waypoints.view(-1, self.n_waypoints, 2)
+        # Fully connected head
+        x = self.dropout(x)
+        x = self.head(x)  # (B, n_waypoints * 2)
+        return x.view(-1, self.n_waypoints, 2)  # (B, n, 2)
 
 
 MODEL_FACTORY = {

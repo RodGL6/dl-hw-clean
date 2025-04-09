@@ -171,7 +171,7 @@ def train(model_name="mlp_planner", num_epochs=50, batch_size=32, lr=0.0007, exp
               f"Val Lateral: {lateral_error:.4f}")
 
         # Save if all metrics improve or combined is best
-        if combined < best_metrics['combined']:
+        if longitudinal_error < best_metrics['longitudinal']:
             best_metrics.update({
                 'longitudinal': longitudinal_error,
                 'lateral': lateral_error,
