@@ -74,7 +74,7 @@ class TransformerPlanner(nn.Module):
         self,
         n_track: int = 10,
         n_waypoints: int = 3,
-        d_model: int = 160,  # or 64?
+        d_model: int = 128,  # or 64?
     ):
         super().__init__()
 
@@ -94,7 +94,7 @@ class TransformerPlanner(nn.Module):
             dim_feedforward=128,
             batch_first=True  # Simpler batch handling
         )
-        self.decoder = nn.TransformerDecoder(self.decoder_layer, num_layers=2)
+        self.decoder = nn.TransformerDecoder(self.decoder_layer, num_layers=3)
 
         # 4. Output projection
         self.output_proj = nn.Linear(d_model, 2)
@@ -164,6 +164,8 @@ class CNNPlanner(torch.nn.Module):
     def __init__(
         self,
         n_waypoints: int = 3,
+        channels_l0: int = 32,
+        n_blocks: int = 3,
     ):
         super().__init__()
 
@@ -191,6 +193,7 @@ class CNNPlanner(torch.nn.Module):
             nn.Dropout(0.3),
             nn.Linear(128, n_waypoints * 2)
         )
+
 
     def forward(self, image: torch.Tensor, **kwargs) -> torch.Tensor:
         """
